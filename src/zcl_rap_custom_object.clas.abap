@@ -16,14 +16,27 @@ CLASS zcl_rap_custom_object DEFINITION
   PRIVATE SECTION.
     METHODS get_filter
       IMPORTING io_request       TYPE REF TO if_rap_query_request
-      RETURNING VALUE(rv_docnum) TYPE /dmo/agency_d
-      RAISING
-                cx_rap_query_provider .
+      RETURNING VALUE(rv_query) TYPE string
+      RAISING   cx_rap_query_provider .
 ENDCLASS.
 
 
 
-CLASS zcl_rap_custom_object IMPLEMENTATION.
+CLASS ZCL_RAP_CUSTOM_OBJECT IMPLEMENTATION.
+
+
+  METHOD get_filter.
+    TRY.
+        rv_query = io_request->get_filter( )->get_as_sql_string(  ).
+
+    CATCH cx_rap_query_filter_no_range INTO DATA(lx_no_sel_option).
+        RAISE EXCEPTION TYPE lc_exception
+          EXPORTING
+            textid = VALUE scx_t100key( msgid = 'ZSD' msgno = 006 ).
+    ENDTRY.
+  ENDMETHOD.
+
+
   METHOD if_rap_query_provider~select.
     DATA lt_values TYPE tt_values.
 
@@ -32,11 +45,18 @@ CLASS zcl_rap_custom_object IMPLEMENTATION.
 
     TRY.
         IF io_request->is_data_requested( ).
+           DATA(lv_query) = me->get_filter( io_request = io_request ).
 
-          lt_values = VALUE #( ( travel_id = '1' description = 'Teste1' status = 'C' )
-                               ( travel_id = '2' description = 'Teste2' status = 'C' )
-                               ( travel_id = '3' description = 'Teste3' status = 'A' ) ).
+             SELECT travel_id, description, status
+               FROM /dmo/travel
+               WHERE (lv_query)
+               ORDER BY travel_id
+               INTO TABLE @lt_values
+               UP TO @lv_top ROWS
+               OFFSET @lv_skip.
 
+
+*         Informa os dados de saída
           io_response->set_total_number_of_records( lines( lt_values ) ).
           io_response->set_data( lt_values ).
         ENDIF.
@@ -45,26 +65,6 @@ CLASS zcl_rap_custom_object IMPLEMENTATION.
         RAISE EXCEPTION TYPE lc_exception
           EXPORTING
             textid = VALUE scx_t100key( msgid = 'ZSD' msgno = 005 ).
-    ENDTRY.
-  ENDMETHOD.
-
-  METHOD get_filter.
-    TRY.
-        DATA(lt_filter_cond) = io_request->get_filter( )->get_as_ranges( ).
-
-        TRY.
-            DATA(ls_filter) = lt_filter_cond[ 1 ].
-            DATA(ls_value) = ls_filter-range[ 1 ].
-            "rv_docnum = ls_value-low.
-          CATCH cx_sy_itab_line_not_found.
-            RAISE EXCEPTION TYPE lc_exception
-              EXPORTING
-                textid = VALUE scx_t100key( msgid = 'ZSD' msgno = 006 ).
-        ENDTRY.
-      CATCH cx_rap_query_filter_no_range INTO DATA(lx_no_sel_option).
-        RAISE EXCEPTION TYPE lc_exception
-          EXPORTING
-            textid = VALUE scx_t100key( msgid = 'ZSD' msgno = 006 ).
     ENDTRY.
   ENDMETHOD.
 ENDCLASS.
